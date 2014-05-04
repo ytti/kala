@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"log"
@@ -32,7 +33,7 @@ func main() {
 	case "show", "add", "edit", "del", "export":
 		load()
 		getpw()
-		kala.KDF(password, &key)
+		kala.KDF(password, container.Salt, &key)
 		decryptAndDecode(&key)
 	}
 	switch opts["action"] {
@@ -46,7 +47,8 @@ func main() {
 		del(arg, &key)
 	case "import":
 		getpw()
-		kala.KDF(password, &key)
+		container.Salt = mkSalt()
+		kala.KDF(password, container.Salt, &key)
 		imp(arg, &key)
 	case "export":
 		exp(&key)
@@ -135,7 +137,8 @@ func create() (ok bool) {
 	entries = kala.Entries{}
 	password = []byte(newpw())
 	var key [32]byte
-	kala.KDF(password, &key)
+	container.Salt = mkSalt()
+	kala.KDF(password, container.Salt, &key)
 	save(&key)
 	fmt.Printf("Empty %s created\n", file)
 	ok = true
@@ -313,5 +316,11 @@ func newpw() (pw1 string) {
 func newpwask() (pw1 string, pw2 string) {
 	pw1 = ask("Passphrase", "", getSilent)
 	pw2 = ask("Passphrase (again)", "", getSilent)
+	return
+}
+
+func mkSalt() (salt []byte) {
+	salt = make([]byte, 32)
+	rand.Read(salt)
 	return
 }

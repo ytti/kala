@@ -16,6 +16,7 @@ var (
 type Container struct {
 	Version  string
 	Checksum uint32
+	Salt     []byte
 	Entries  []byte
 }
 
@@ -70,6 +71,7 @@ func (container *Container) Load(file string) (err error) {
 	if checksum != container.Checksum {
 		err = &ChecksumError{checksum, container.Checksum}
 	}
+	salt = container.Salt
 	return
 }
 

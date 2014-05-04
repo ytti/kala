@@ -10,7 +10,6 @@ import (
 
 const (
 	Version  string = "0.1"
-	salt     string = "19dd1947a95454ccaf223a731c32db0c" // md5sum(kala)
 	scrypt_N int    = 512
 	scrypt_r int    = 10
 	scrypt_p int    = 10
@@ -18,6 +17,7 @@ const (
 
 var (
 	nonce [24]byte
+	salt  []byte
 )
 
 type DecryptError struct {
@@ -51,13 +51,8 @@ func Decrypt(crypted []byte, key *[32]byte) (clear []byte, err error) {
 	return
 }
 
-func KDFwithSalt(pw []byte, salt []byte, key *[32]byte) (err error) {
+func KDF(pw []byte, salt []byte, key *[32]byte) (err error) {
 	keyslice, err := scrypt.Key(pw, salt, scrypt_N, scrypt_r, scrypt_p, 32)
 	copy(key[:], keyslice)
-	return
-}
-
-func KDF(pw []byte, key *[32]byte) (err error) {
-	err = KDFwithSalt(pw, []byte(salt), key)
 	return
 }

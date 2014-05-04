@@ -11,12 +11,12 @@ type Entry struct {
 }
 
 func (entry *Entry) AddSecret(secret SecretEntry, pw []byte) (err error) {
-	var key [32]byte
-	KDFwithSalt(pw, []byte(entry.Name), &key)
 	encoded, err := Encode(secret)
 	if err != nil {
 		return
 	}
+	var key [32]byte
+	KDF(pw, mysalt(entry.Name), &key)
 	entry.Secret = Crypt([]byte(encoded), &key)
 	return
 }
@@ -28,7 +28,7 @@ func (entry Entry) Decode() (secret SecretEntry, err error) {
 
 func (entry *Entry) Decrypt(pw []byte) (err error) {
 	var key [32]byte
-	KDFwithSalt(pw, []byte(entry.Name), &key)
+	KDF(pw, mysalt(entry.Name), &key)
 	entry.Secret, err = Decrypt(entry.Secret, &key)
 	return
 }
@@ -46,5 +46,11 @@ func (entry Entry) String() (str string) {
 	if show_secret {
 		str += fmt.Sprintf("%12s : %s\n", "Passphrase", secret.Passphrase)
 	}
+	return
+}
+
+func mysalt(entry_name string) (myslt []byte) {
+	myslt = []byte(entry_name)
+	myslt = append(myslt, salt...)
 	return
 }
