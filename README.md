@@ -7,10 +7,10 @@ programming language incompetent developer, you're gonna love this.
 Every entry has 'secret entry' which right now includes only 'passphrase' but
 could have something like HOTP master key etc in future. This 'secret entry' is
 encrypted with salsa20 and key is derived with scrypt from master passphrase
-salted with the entry name.
+salted with mastersalt+entry_name.
 
 Entry is put into array of entries, entries is encrypted with salsa20  and key
-is derived with scrypt from master password with compile time static salt.
+is derived with scrypt from master password with random mastersalt.
 
 Runtime only secrets which you're interested in are decrypted, secrets for
 entries you didn't ask for are not touched. So perhaps in some corner-cases
