@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"crypto/rand"
 	"flag"
 	"fmt"
 	"log"
@@ -14,10 +13,7 @@ import (
 )
 
 var (
-	container kala.Container
-	file      string
-	password  []byte
-	entries   kala.Entries
+	fish *kala.Kala
 )
 
 type questionFunc func() string
@@ -26,45 +22,44 @@ type changeFunc func(int) bool
 func main() {
 	opts := cmdLineParse()
 	arg := flag.Arg(0)
-	container = kala.Container{}
-	file, _ = container.File()
-	var key [32]byte
+	var err error
+	if fish, err = kala.New(); err != nil {
+		log.Fatal(err)
+	}
 	switch opts["action"] {
 	case "show", "add", "edit", "del", "export":
-		load()
-		getpw()
-		kala.KDF(password, container.Salt, &key)
-		decryptAndDecode(&key)
+    if haveFile() {
+		  if err = fish.Load(getpw()); err != nil {
+			  log.Fatal(err)
+		  }
+    } else {
+      create()
+    }
 	}
 	switch opts["action"] {
 	case "show":
 		show(arg)
 	case "add":
-		add(arg, &key)
+		add(arg)
 	case "edit":
-		edit(arg, &key)
+		edit(arg)
 	case "del":
-		del(arg, &key)
+		del(arg)
 	case "import":
-		getpw()
-		container.Salt = mkSalt()
-		kala.KDF(password, container.Salt, &key)
-		imp(arg, &key)
+		imp(arg)
 	case "export":
-		exp(&key)
-	case "create":
-		create()
+		exp()
 	}
 }
 
 func show(arg string) {
 	for _, i := range findIdx(arg) {
-		entries[i].Decrypt(password)
-		fmt.Println(entries[i])
+		fish.Entries[i].Decrypt(fish)
+		fmt.Println(fish.Entries[i])
 	}
 }
 
-func add(arg string, key *[32]byte) {
+func add(arg string) {
 	strs := map[string]string{
 		"Name": arg,
 		"Host": arg,
@@ -74,13 +69,13 @@ func add(arg string, key *[32]byte) {
 	if getInput() == "no" {
 		fmt.Println("Ignoring entry")
 	} else {
-		entries.Add(entry)
-		save(key)
+		fish.Entries.Add(entry)
+		save()
 		fmt.Println("Entry written to file")
 	}
 }
 
-func edit(arg string, key *[32]byte) {
+func edit(arg string) {
 	strs := map[string]string{
 		"act_this":     "Edit this entry (yes/NO): ",
 		"act_ack":      "Entry changed\n\n",
@@ -89,10 +84,10 @@ func edit(arg string, key *[32]byte) {
 		"act_conf_ack": "Changes written to file\n\n",
 		"act_conf_nak": "Changes ignored\n\n",
 	}
-	change(arg, strs, changeEdit, key)
+	change(arg, strs, changeEdit)
 }
 
-func del(arg string, key *[32]byte) {
+func del(arg string) {
 	strs := map[string]string{
 		"act_this":     "Delete this entry (yes/NO): ",
 		"act_ack":      "Marking for deletion\n\n",
@@ -101,58 +96,56 @@ func del(arg string, key *[32]byte) {
 		"act_conf_ack": "Deletions written to file\n\n",
 		"act_conf_nak": "Deletions ignored\n\n",
 	}
-	change(arg, strs, changeDel, key)
+	change(arg, strs, changeDel)
 }
 
-func imp(filename string, key *[32]byte) {
+func imp(filename string) {
 	var err error
-	entries, err = kala.Import(filename, password, key)
+	fish.NewPassphrase([]byte(newpw()))
+	fish.Entries, err = kala.Import(fish, filename)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%d entries found, commit changes to disk, replacing existing data (yes/NO): ", len(entries))
+	fmt.Printf("%d entries found, commit changes to disk, replacing existing data (yes/NO): ", len(fish.Entries))
 	if getInput() == "yes" {
-		save(key)
+		save()
 		fmt.Println("entries written to disk")
 	} else {
 		fmt.Println("skipping import")
 	}
 }
 
-func exp(key *[32]byte) {
-	str, err := kala.Export(password, key)
+func exp() {
+	str, err := kala.Export(fish)
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println(str)
 }
 
-func create() (ok bool) {
-	if _, err := os.Stat(file); err == nil {
-		fmt.Printf("%s already exists, not creating\n", file)
-		ok = false
-		return
-	}
-	fmt.Printf("Creating new %s, new master passphrase needed\n", file)
-	entries = kala.Entries{}
-	password = []byte(newpw())
-	var key [32]byte
-	container.Salt = mkSalt()
-	kala.KDF(password, container.Salt, &key)
-	save(&key)
-	fmt.Printf("Empty %s created\n", file)
-	ok = true
-	return
+func haveFile() (file bool) {
+  file = false
+  if _, err := os.Stat(fish.Config.File); err == nil {
+    file = true
+  }
+  return
 }
 
-func change(arg string, strs map[string]string, changeFn changeFunc, key *[32]byte) {
+func create()  {
+	fmt.Printf("Creating new %s, new master passphrase needed\n", fish.Config.File)
+	fish.NewPassphrase([]byte(newpw()))
+	save()
+	fmt.Printf("Empty %s created\n", fish.Config.File)
+}
+
+func change(arg string, strs map[string]string, changeFn changeFunc) {
 	var changes uint
 	idx := findIdx(arg)
 	// reverse the result, as index changes when we delete it
 	for i := len(idx) - 1; i >= 0; i-- {
 		eidx := idx[i]
 		fmt.Println()
-		fmt.Print(entries[eidx])
+		fmt.Print(fish.Entries[eidx])
 		fmt.Printf("%s", strs["act_this"])
 		if getInput() == "yes" {
 			changeFn(eidx)
@@ -165,7 +158,7 @@ func change(arg string, strs map[string]string, changeFn changeFunc, key *[32]by
 	if changes > 0 {
 		fmt.Printf("%d %s", changes, strs["act_conf"])
 		if getInput() == "yes" {
-			save(key)
+			save()
 			fmt.Printf("%s", strs["act_conf_ack"])
 		} else {
 			fmt.Printf("%s", strs["act_conf_nak"])
@@ -174,19 +167,19 @@ func change(arg string, strs map[string]string, changeFn changeFunc, key *[32]by
 }
 
 func changeDel(index int) (ok bool) {
-	entries.Delete(index)
+	fish.Entries.Delete(index)
 	ok = true
 	return
 }
 func changeEdit(index int) (ok bool) {
-	e := entries[index]
+	e := fish.Entries[index]
 	strs := map[string]string{
 		"Name":        e.Name,
 		"Host":        e.Host,
 		"Username":    e.Username,
 		"Information": e.Information,
 	}
-	entries[index] = getEntry(strs, e.Secret)
+	fish.Entries[index] = getEntry(strs, e.Secret)
 	ok = true
 	return
 }
@@ -201,7 +194,7 @@ func getEntry(def map[string]string, oldsecret []byte) (entry kala.Entry) {
 	if secret.Passphrase == "" && len(oldsecret) > 0 {
 		entry.Secret = oldsecret
 	} else {
-		entry.AddSecret(secret, password)
+		entry.AddSecret(fish, secret)
 	}
 	return
 }
@@ -213,7 +206,6 @@ func cmdLineParse() (opts map[string]string) {
 	edit := flag.Bool("e", false, "edit entry")
 	imp := flag.Bool("import", false, "import entries - destructive, not merge")
 	exp := flag.Bool("export", false, "export entries")
-	create := flag.Bool("create", false, "create file")
 	flag.Parse()
 	switch {
 	case *add:
@@ -226,46 +218,20 @@ func cmdLineParse() (opts map[string]string) {
 		opts["action"] = "export"
 	case *imp:
 		opts["action"] = "import"
-	case *create:
-		opts["action"] = "create"
 	default:
 		opts["action"] = "show"
 	}
 	return
 }
 
-func load() {
-	if err := container.Load(file); err != nil {
-		if create() == true {
-			os.Exit(0)
-		} else {
-			log.Fatal(err)
-		}
-	}
-}
-
-func decryptAndDecode(key *[32]byte) {
-	var err error
-	if err := container.Decrypt(key); err != nil {
-		log.Fatal(err)
-	}
-	entries, err = container.Decode()
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func save(key *[32]byte) {
-	if err := container.AddEntries(entries, key); err != nil {
-		log.Fatal(err)
-	}
-	if err := container.Save(file, key); err != nil {
+func save() {
+	if err := fish.Container.Save(fish); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func findIdx(find string) (found []int) {
-	found, err := entries.Find(find)
+	found, err := fish.Entries.Find(find)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -299,9 +265,10 @@ func getSilent() (str string) {
 	return
 }
 
-func getpw() {
-	fmt.Fprintf(os.Stderr, "Passphrase for %s: ", file)
-	password = gopass.GetPasswd()
+func getpw() (pw []byte) {
+	fmt.Fprintf(os.Stderr, "Passphrase for %s: ", fish.Config.File)
+	pw = []byte(gopass.GetPasswd())
+	return
 }
 
 func newpw() (pw1 string) {
@@ -316,11 +283,5 @@ func newpw() (pw1 string) {
 func newpwask() (pw1 string, pw2 string) {
 	pw1 = ask("Passphrase", "", getSilent)
 	pw2 = ask("Passphrase (again)", "", getSilent)
-	return
-}
-
-func mkSalt() (salt []byte) {
-	salt = make([]byte, 32)
-	rand.Read(salt)
 	return
 }

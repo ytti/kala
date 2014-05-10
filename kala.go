@@ -1,58 +1,68 @@
 package kala
 
 import (
-	"encoding/json"
-	"fmt"
-
-	"code.google.com/p/go.crypto/nacl/secretbox"
-	"code.google.com/p/go.crypto/scrypt"
+	"os"
+	"os/user"
+	"path"
 )
 
 const (
-	Version  string = "0.1"
-	scrypt_N int    = 512
-	scrypt_r int    = 10
-	scrypt_p int    = 10
+	Version string = "0.1"
 )
 
-var (
-	nonce [24]byte
-	salt  []byte
-)
-
-type DecryptError struct {
-	err string
+type Kala struct {
+	Config    *Config
+	Container *Container
+	Entries   Entries
 }
 
-func (f DecryptError) Error() string {
-	return fmt.Sprintf("decryption failed: %s", f.err)
-}
-
-func Encode(data interface{}) (encoded []byte, err error) {
-	encoded, err = json.MarshalIndent(data, "", "  ")
+func (kala *Kala) Load(pw []byte) (err error) {
+	kala.Config.Passphrase = pw
+	err = kala.Container.Load(kala)
 	return
 }
 
-func Decode(encoded []byte, v interface{}) (err error) {
-	err = json.Unmarshal(encoded, &v)
+func New() (kala *Kala, err error) {
+	kala = &Kala{}
+	kala.Config = &Config{}
+	kala.Config.Nonce = &[24]byte{}
+	kala.Config.Key = &[32]byte{}
+	kala.Config.File, err = mkFile()
+	kala.Config.Salt = mkSalt()
+	kala.Config.Scrypt_N = 512
+	kala.Config.Scrypt_r = 10
+	kala.Config.Scrypt_p = 10
+	kala.Container = &Container{}
+	kala.Entries = Entries{}
 	return
 }
 
-func Crypt(clear []byte, key *[32]byte) (crypted []byte) {
-	crypted = secretbox.Seal(crypted[:0], clear, &nonce, key)
+func (kala *Kala) NewPassphrase(pw []byte) (err error) {
+	kala.Config.Passphrase = pw
+	err = kdf(kala)
 	return
 }
 
-func Decrypt(crypted []byte, key *[32]byte) (clear []byte, err error) {
-	clear, ok := secretbox.Open(clear[:0], crypted, &nonce, key)
-	if ok != true {
-		err = &DecryptError{"incorrect password"}
+type Config struct {
+	Nonce      *[24]byte
+	Key        *[32]byte
+	Salt       []byte
+	Passphrase []byte
+	File       string
+	Scrypt_N   int
+	Scrypt_r   int
+	Scrypt_p   int
+}
+
+func mkFile() (filename string, err error) {
+	usr, err := user.Current()
+	if err != nil {
+		return
 	}
-	return
-}
-
-func KDF(pw []byte, salt []byte, key *[32]byte) (err error) {
-	keyslice, err := scrypt.Key(pw, salt, scrypt_N, scrypt_r, scrypt_p, 32)
-	copy(key[:], keyslice)
+	filename = path.Join(usr.HomeDir, ".config", "kala")
+	if err = os.MkdirAll(filename, 0700); err != nil {
+		return
+	}
+	filename = path.Join(filename, "kala.json")
 	return
 }

@@ -10,26 +10,26 @@ type Entry struct {
 	Secret      []byte
 }
 
-func (entry *Entry) AddSecret(secret SecretEntry, pw []byte) (err error) {
-	encoded, err := Encode(secret)
+func (entry *Entry) AddSecret(kala *Kala, secret SecretEntry) (err error) {
+	encoded, err := encode(secret)
 	if err != nil {
 		return
 	}
 	var key [32]byte
-	KDF(pw, mysalt(entry.Name), &key)
-	entry.Secret = Crypt([]byte(encoded), &key)
+	kdfEntry(kala, mysalt(kala, entry.Name), &key)
+	entry.Secret = crypt(kala, encoded)
 	return
 }
 
 func (entry Entry) Decode() (secret SecretEntry, err error) {
-	err = Decode(entry.Secret, &secret)
+	err = decode(entry.Secret, &secret)
 	return
 }
 
-func (entry *Entry) Decrypt(pw []byte) (err error) {
+func (entry *Entry) Decrypt(kala *Kala) (err error) {
 	var key [32]byte
-	KDF(pw, mysalt(entry.Name), &key)
-	entry.Secret, err = Decrypt(entry.Secret, &key)
+	kdfEntry(kala, mysalt(kala, entry.Name), &key)
+	entry.Secret, err = decrypt(kala, entry.Secret)
 	return
 }
 
@@ -49,8 +49,8 @@ func (entry Entry) String() (str string) {
 	return
 }
 
-func mysalt(entry_name string) (myslt []byte) {
+func mysalt(kala *Kala, entry_name string) (myslt []byte) {
 	myslt = []byte(entry_name)
-	myslt = append(myslt, salt...)
+	myslt = append(myslt, kala.Config.Salt...)
 	return
 }

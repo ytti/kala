@@ -5,12 +5,6 @@ import (
 	"hash/crc32"
 	"io/ioutil"
 	"os"
-	"os/user"
-	"path"
-)
-
-var (
-	ContainerFile string
 )
 
 type Container struct {
@@ -20,71 +14,64 @@ type Container struct {
 	Entries  []byte
 }
 
-type ChecksumError struct {
+type checksumError struct {
 	got    uint32
 	wanted uint32
 }
 
-func (f ChecksumError) Error() string {
+func (f checksumError) Error() string {
 	return fmt.Sprintf("checksum failed, got %d, wanted %d", f.got, f.wanted)
 }
 
-func (container *Container) Decrypt(key *[32]byte) (err error) {
-	container.Entries, err = Decrypt(container.Entries, key)
-	return
-}
-func (container Container) Decode() (entries Entries, err error) {
-	err = Decode(container.Entries, &entries)
-	return
-}
-func (container *Container) AddEntries(entries Entries, key *[32]byte) (err error) {
-	encoded, err := Encode(entries)
+func (container *Container) addEntries(kala *Kala) (err error) {
+	encoded, err := encode(kala.Entries)
 	if err != nil {
 		return
 	}
-	container.Entries = Crypt([]byte(encoded), key)
+	container.Entries = crypt(kala, []byte(encoded))
 	return
 }
 
-func (container Container) File() (filename string, err error) {
-	usr, err := user.Current()
+func (container *Container) Load(kala *Kala) (err error) {
+	data, err := ioutil.ReadFile(kala.Config.File)
 	if err != nil {
 		return
 	}
-	filename = path.Join(usr.HomeDir, ".config", "kala")
-	if err = os.MkdirAll(filename, 0700); err != nil {
-		return
-	}
-	filename = path.Join(filename, "kala.json")
-	return
-}
-
-func (container *Container) Load(file string) (err error) {
-	data, err := ioutil.ReadFile(file)
-	if err != nil {
-		return
-	}
-	if err = Decode(data, &container); err != nil {
+	if err = decode(data, &container); err != nil {
 		return
 	}
 	checksum := crc32.ChecksumIEEE(container.Entries)
 	if checksum != container.Checksum {
-		err = &ChecksumError{checksum, container.Checksum}
+		err = &checksumError{checksum, container.Checksum}
+		return
 	}
-	salt = container.Salt
+	kala.Config.Salt = container.Salt
+	if err = kdf(kala); err != nil {
+		return
+	}
+	if container.Entries, err = decrypt(kala, container.Entries); err != nil {
+		return
+	}
+	if err = decode(container.Entries, &kala.Entries); err != nil {
+		return
+	}
 	return
 }
 
-func (container *Container) Save(file string, key *[32]byte) (err error) {
+func (container *Container) Save(kala *Kala) (err error) {
+	if err = container.addEntries(kala); err != nil {
+		return
+	}
 	container.Version = Version
 	container.Checksum = crc32.ChecksumIEEE(container.Entries)
-	data, err := Encode(container)
+  container.Salt = kala.Config.Salt
+	data, err := encode(container)
 	if err != nil {
 		return
 	}
-	oldfile := file + ".old"
+	oldfile := kala.Config.File + ".old"
 	// dont bailout on failing rename, maybe during runtime original file was deleted, if we bailout, we've lost our data
-	err = os.Rename(file, oldfile)
-	err = ioutil.WriteFile(file, data, 0600)
+	err = os.Rename(kala.Config.File, oldfile)
+	err = ioutil.WriteFile(kala.Config.File, data, 0600)
 	return
 }

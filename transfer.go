@@ -15,13 +15,13 @@ type TransportEntry struct {
 }
 type TransportEntries []TransportEntry
 
-func Import(filename string, pw []byte, key *[32]byte) (entries Entries, err error) {
+func Import(kala *Kala, filename string) (entries Entries, err error) {
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return
 	}
 	imps := TransportEntries{}
-	if err = Decode(data, &imps); err != nil {
+	if err = decode(data, &imps); err != nil {
 		return
 	}
 	entries = Entries{}
@@ -33,33 +33,21 @@ func Import(filename string, pw []byte, key *[32]byte) (entries Entries, err err
 		entry.Information = imp.Information
 		secret := SecretEntry{}
 		secret.Passphrase = imp.Secret.Passphrase
-		entry.AddSecret(secret, pw)
+		entry.AddSecret(kala, secret)
 		entries = append(entries, entry)
 	}
 	return
 }
 
-func Export(pw []byte, key *[32]byte) (data string, err error) {
+func Export(kala *Kala) (data string, err error) {
 	exports := TransportEntries{}
-	container := Container{}
-	file, err := container.File()
-	if err != nil {
+	if err = kala.Load(kala.Config.Passphrase); err != nil {
 		return
 	}
-	if err = container.Load(file); err != nil {
-		return
-	}
-	if err = container.Decrypt(key); err != nil {
-		return
-	}
-	entries, err := container.Decode()
-	if err != nil {
-		return
-	}
-	for _, entry := range entries {
+	for _, entry := range kala.Entries {
 		export := TransportEntry{}
 		secret := SecretEntry{}
-		if err = entry.Decrypt(pw); err != nil {
+		if err = entry.Decrypt(kala); err != nil {
 			return
 		}
 		if secret, err = entry.Decode(); err != nil {
@@ -72,7 +60,7 @@ func Export(pw []byte, key *[32]byte) (data string, err error) {
 		export.Secret.Passphrase = secret.Passphrase
 		exports = append(exports, export)
 	}
-	dataslice, err := Encode(exports)
+	dataslice, err := encode(exports)
 	data = string(dataslice)
 	return
 }
