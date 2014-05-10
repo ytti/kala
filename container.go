@@ -64,7 +64,7 @@ func (container *Container) Save(kala *Kala) (err error) {
 	}
 	container.Version = Version
 	container.Checksum = crc32.ChecksumIEEE(container.Entries)
-  container.Salt = kala.Config.Salt
+	container.Salt = kala.Config.Salt
 	data, err := encode(container)
 	if err != nil {
 		return

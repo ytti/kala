@@ -28,13 +28,13 @@ func main() {
 	}
 	switch opts["action"] {
 	case "show", "add", "edit", "del", "export":
-    if haveFile() {
-		  if err = fish.Load(getpw()); err != nil {
-			  log.Fatal(err)
-		  }
-    } else {
-      create()
-    }
+		if haveFile() {
+			if err = fish.Load(getpw()); err != nil {
+				log.Fatal(err)
+			}
+		} else {
+			create()
+		}
 	}
 	switch opts["action"] {
 	case "show":
@@ -124,14 +124,14 @@ func exp() {
 }
 
 func haveFile() (file bool) {
-  file = false
-  if _, err := os.Stat(fish.Config.File); err == nil {
-    file = true
-  }
-  return
+	file = false
+	if _, err := os.Stat(fish.Config.File); err == nil {
+		file = true
+	}
+	return
 }
 
-func create()  {
+func create() {
 	fmt.Printf("Creating new %s, new master passphrase needed\n", fish.Config.File)
 	fish.NewPassphrase([]byte(newpw()))
 	save()
