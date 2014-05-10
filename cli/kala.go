@@ -14,15 +14,14 @@ import (
 
 var (
 	fish *kala.Kala
+	err  error
 )
 
 type questionFunc func() string
-type changeFunc func(int) bool
+type changeFunc func(int)
 
 func main() {
-	opts := cmdLineParse()
-	arg := flag.Arg(0)
-	var err error
+	opts, arg := cmdLineParse()
 	if fish, err = kala.New(); err != nil {
 		log.Fatal(err)
 	}
@@ -100,10 +99,8 @@ func del(arg string) {
 }
 
 func imp(filename string) {
-	var err error
 	fish.NewPassphrase([]byte(newpw()))
-	fish.Entries, err = kala.Import(fish, filename)
-	if err != nil {
+	if fish.Entries, err = kala.Import(fish, filename); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("%d entries found, commit changes to disk, replacing existing data (yes/NO): ", len(fish.Entries))
@@ -116,11 +113,11 @@ func imp(filename string) {
 }
 
 func exp() {
-	str, err := kala.Export(fish)
-	if err != nil {
+	if str, err := kala.Export(fish); err != nil {
 		log.Fatal(err)
+	} else {
+		fmt.Println(str)
 	}
-	fmt.Println(str)
 }
 
 func haveFile() (file bool) {
@@ -166,12 +163,11 @@ func change(arg string, strs map[string]string, changeFn changeFunc) {
 	}
 }
 
-func changeDel(index int) (ok bool) {
+func changeDel(index int) {
 	fish.Entries.Delete(index)
-	ok = true
-	return
 }
-func changeEdit(index int) (ok bool) {
+
+func changeEdit(index int) {
 	e := fish.Entries[index]
 	strs := map[string]string{
 		"Name":        e.Name,
@@ -180,8 +176,6 @@ func changeEdit(index int) (ok bool) {
 		"Information": e.Information,
 	}
 	fish.Entries[index] = getEntry(strs, e.Secret)
-	ok = true
-	return
 }
 
 func getEntry(def map[string]string, oldsecret []byte) (entry kala.Entry) {
@@ -199,7 +193,7 @@ func getEntry(def map[string]string, oldsecret []byte) (entry kala.Entry) {
 	return
 }
 
-func cmdLineParse() (opts map[string]string) {
+func cmdLineParse() (opts map[string]string, arg string) {
 	opts = make(map[string]string)
 	add := flag.Bool("a", false, "add entry")
 	del := flag.Bool("d", false, "delete entry")
@@ -221,6 +215,7 @@ func cmdLineParse() (opts map[string]string) {
 	default:
 		opts["action"] = "show"
 	}
+	arg = flag.Arg(0)
 	return
 }
 

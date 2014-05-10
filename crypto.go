@@ -17,13 +17,13 @@ func (f decryptError) Error() string {
 	return fmt.Sprintf("decryption failed: %s", f.err)
 }
 
-func crypt(kala *Kala, clear []byte) (crypted []byte) {
-	crypted = secretbox.Seal(crypted[:0], clear, kala.Config.Nonce, kala.Config.Key)
+func crypt(key *[32]byte, nonce *[24]byte, clear []byte) (crypted []byte) {
+	crypted = secretbox.Seal(crypted[:0], clear, nonce, key)
 	return
 }
 
-func decrypt(kala *Kala, crypted []byte) (clear []byte, err error) {
-	clear, ok := secretbox.Open(clear[:0], crypted, kala.Config.Nonce, kala.Config.Key)
+func decrypt(key *[32]byte, nonce *[24]byte, crypted []byte) (clear []byte, err error) {
+	clear, ok := secretbox.Open(clear[:0], crypted, nonce, key)
 	if ok != true {
 		err = &decryptError{"incorrect password"}
 	}
@@ -49,12 +49,18 @@ func mkSalt() (salt []byte) {
 	return
 }
 
-func encode(data interface{}) (encoded []byte, err error) {
-	encoded, err = json.MarshalIndent(data, "", "  ")
+func mkNonce(nonce *[24]byte) {
+	non := make([]byte, 24)
+	rand.Read(non)
+	copy(nonce[:], non)
+}
+
+func encode(in interface{}, out *[]byte) (err error) {
+	*out, err = json.MarshalIndent(in, "", "  ")
 	return
 }
 
-func decode(encoded []byte, v interface{}) (err error) {
-	err = json.Unmarshal(encoded, &v)
+func decode(in []byte, out interface{}) (err error) {
+	err = json.Unmarshal(in, &out)
 	return
 }

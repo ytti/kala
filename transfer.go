@@ -60,7 +60,10 @@ func Export(kala *Kala) (data string, err error) {
 		export.Secret.Passphrase = secret.Passphrase
 		exports = append(exports, export)
 	}
-	dataslice, err := encode(exports)
+	var dataslice []byte
+	if err = encode(exports, &dataslice); err != nil {
+		return
+	}
 	data = string(dataslice)
 	return
 }

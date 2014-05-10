@@ -11,6 +11,7 @@ type Container struct {
 	Version  string
 	Checksum uint32
 	Salt     []byte
+	Nonce    []byte
 	Entries  []byte
 }
 
@@ -24,11 +25,11 @@ func (f checksumError) Error() string {
 }
 
 func (container *Container) addEntries(kala *Kala) (err error) {
-	encoded, err := encode(kala.Entries)
-	if err != nil {
+	var encoded []byte
+	if err = encode(kala.Entries, &encoded); err != nil {
 		return
 	}
-	container.Entries = crypt(kala, []byte(encoded))
+	container.Entries = crypt(kala.Config.Key, kala.Config.Nonce, encoded)
 	return
 }
 
@@ -46,32 +47,36 @@ func (container *Container) Load(kala *Kala) (err error) {
 		return
 	}
 	kala.Config.Salt = container.Salt
+	copy(kala.Config.Nonce[:], container.Nonce)
 	if err = kdf(kala); err != nil {
 		return
 	}
-	if container.Entries, err = decrypt(kala, container.Entries); err != nil {
+	if container.Entries, err = decrypt(kala.Config.Key, kala.Config.Nonce, container.Entries); err != nil {
 		return
 	}
-	if err = decode(container.Entries, &kala.Entries); err != nil {
-		return
-	}
+	err = decode(container.Entries, &kala.Entries)
 	return
 }
 
 func (container *Container) Save(kala *Kala) (err error) {
+	mkNonce(kala.Config.Nonce)
 	if err = container.addEntries(kala); err != nil {
 		return
 	}
 	container.Version = Version
-	container.Checksum = crc32.ChecksumIEEE(container.Entries)
 	container.Salt = kala.Config.Salt
-	data, err := encode(container)
-	if err != nil {
+	container.Nonce = kala.Config.Nonce[0:24]
+	container.Checksum = crc32.ChecksumIEEE(container.Entries)
+	var encoded []byte
+	if err = encode(container, &encoded); err != nil {
 		return
 	}
 	oldfile := kala.Config.File + ".old"
-	// dont bailout on failing rename, maybe during runtime original file was deleted, if we bailout, we've lost our data
-	err = os.Rename(kala.Config.File, oldfile)
-	err = ioutil.WriteFile(kala.Config.File, data, 0600)
+	tmpfile := kala.Config.File + ".tmp"
+	if err = ioutil.WriteFile(tmpfile, encoded, 0600); err != nil {
+		return
+	}
+	os.Rename(kala.Config.File, oldfile)
+	err = os.Rename(tmpfile, kala.Config.File)
 	return
 }

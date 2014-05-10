@@ -11,13 +11,13 @@ type Entry struct {
 }
 
 func (entry *Entry) AddSecret(kala *Kala, secret SecretEntry) (err error) {
-	encoded, err := encode(secret)
-	if err != nil {
+	var encoded []byte
+	if err = encode(secret, &encoded); err != nil {
 		return
 	}
 	var key [32]byte
 	kdfEntry(kala, mysalt(kala, entry.Name), &key)
-	entry.Secret = crypt(kala, encoded)
+	entry.Secret = crypt(&key, &[24]byte{}, encoded)
 	return
 }
 
@@ -29,7 +29,7 @@ func (entry Entry) Decode() (secret SecretEntry, err error) {
 func (entry *Entry) Decrypt(kala *Kala) (err error) {
 	var key [32]byte
 	kdfEntry(kala, mysalt(kala, entry.Name), &key)
-	entry.Secret, err = decrypt(kala, entry.Secret)
+	entry.Secret, err = decrypt(&key, &[24]byte{}, entry.Secret)
 	return
 }
 

@@ -25,10 +25,11 @@ func (kala *Kala) Load(pw []byte) (err error) {
 func New() (kala *Kala, err error) {
 	kala = &Kala{}
 	kala.Config = &Config{}
-	kala.Config.Nonce = &[24]byte{}
 	kala.Config.Key = &[32]byte{}
 	kala.Config.File, err = mkFile()
 	kala.Config.Salt = mkSalt()
+	kala.Config.Nonce = &[24]byte{}
+	mkNonce(kala.Config.Nonce)
 	kala.Config.Scrypt_N = 512
 	kala.Config.Scrypt_r = 10
 	kala.Config.Scrypt_p = 10
